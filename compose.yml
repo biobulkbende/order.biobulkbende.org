@@ -1,0 +1,73 @@
+---
+version: "3.8"
+
+services:
+  app:
+    image: foodcoops/foodsoft:${FOODSOFT_VERSION}
+    networks:
+      - internal
+      - proxy
+    deploy:
+      update_config:
+        failure_action: rollback
+        order: start-first
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.foodsoft.rule=Host(`${DOMAIN}`)"
+        - "traefik.http.routers.foodsoft.entrypoints=web-secure"
+        - "traefik.http.services.foodsoft.loadbalancer.server.port=3000"
+        - "traefik.http.routers.foodsoft.tls.certresolver=production"
+
+  app-cron:
+    image: foodcoops/foodsoft:${FOODSOFT_VERSION}
+    command: ./proc-start cron
+    networks:
+      - internal
+
+  app-worker:
+    image: foodcoops/foodsoft:${FOODSOFT_VERSION}
+    command: ./proc-start worker
+    networks:
+      - internal
+
+  database:
+    image: "mariadb:10.5"
+    command: |
+      mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      - MYSQL_DATABASE=foodsoft
+      - MYSQL_USER=foodsoft
+      - MYSQL_PASSWORD_FILE=/run/secrets/db_passwd
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/db_root_passwd
+    secrets:
+      - db_passwd
+      - db_root_passwd
+    volumes:
+      - "database:/var/lib/mysql"
+    networks:
+      - internal
+
+  redis:
+    image: redis:6
+
+networks:
+  internal:
+  proxy:
+    external: true
+
+volumes:
+  database:
+
+configs:
+  app_config:
+    name: ${APP_CONFIG_VERSION}
+    file: app_config.yml.tmpl
+    template_driver: golang
+
+secrets:
+  db_passwd:
+    name: ${DB_PASSWD_VERSION}
+    external: true
+  db_root_passwd:
+    name: ${DB_ROOT_PASSWD_VERSION}
+    external: true
